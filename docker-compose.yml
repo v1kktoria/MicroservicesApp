@@ -1,0 +1,49 @@
+version: '3.8'
+services:
+  eureka-server:
+    build: ./eureka-server
+    container_name: eureka-server
+    ports:
+      - "8761:8761"
+    networks:
+      - microservices-network
+
+  user-service:
+    build: ./user-service
+    container_name: user-service
+    environment:
+      - EUREKA_SERVER_URI=http://eureka-server:8761/eureka
+    depends_on:
+      - eureka-server
+    networks:
+      - microservices-network
+    ports:
+      - "8081:8081"
+
+  note-service:
+    build: ./note-service
+    container_name: note-service
+    environment:
+      - EUREKA_SERVER_URI=http://eureka-server:8761/eureka
+    depends_on:
+      - eureka-server
+    networks:
+      - microservices-network
+    ports:
+      - "8082:8082"
+
+  api-gateway:
+    build: ./apigateway
+    container_name: apigateway
+    environment:
+      - EUREKA_SERVER_URI=http://eureka-server:8761/eureka
+    depends_on:
+      - eureka-server
+    networks:
+      - microservices-network
+    ports:
+      - "8080:8080"
+
+networks:
+  microservices-network:
+    driver: bridge

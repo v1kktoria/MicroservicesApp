@@ -1,0 +1,39 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+
+  cloud:
+    gateway:
+      global-cors:
+        corsConfigurations:
+          '[/**]':
+            allowedOrigins: "*"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+            allowedHeaders: "*"
+      routes:
+        - id: user-service
+          uri: lb://user-service
+          predicates:
+            - Path=/users/**
+        - id: note-service
+          uri: lb://note-service
+          predicates:
+            - Path=/notes/**
+jwt:
+  secret: Hjds23FDF42fsdhfjs42367hfjsdhjfdsbf2hdfsH
+
+eureka:
+  instance:
+    prefer-ip-address: true
+  client:
+    service-url:
+      defaultZone:  ${EUREKA_SERVER_URI}
+    register-with-eureka: true
+    fetch-registry: true
