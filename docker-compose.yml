@@ -1,49 +1,92 @@
-version: '3.8'
+version: '3'
 services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    ports:
+      - "9092:9092"
+
   eureka-server:
-    build: ./eureka-server
-    container_name: eureka-server
+    image: eureka-server:latest
+    build:
+      context: ./eureka-server
+      dockerfile: Dockerfile
     ports:
       - "8761:8761"
-    networks:
-      - microservices-network
 
   user-service:
-    build: ./user-service
-    container_name: user-service
-    environment:
-      - EUREKA_SERVER_URI=http://eureka-server:8761/eureka
-    depends_on:
-      - eureka-server
-    networks:
-      - microservices-network
+    image: user-service:latest
+    build:
+      context: ./user-service
+      dockerfile: Dockerfile
     ports:
       - "8081:8081"
-
-  note-service:
-    build: ./note-service
-    container_name: note-service
     environment:
-      - EUREKA_SERVER_URI=http://eureka-server:8761/eureka
+      - SPRING_DATASOURCE_URL=jdbc:h2:mem:userdb
+      - SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.h2.Driver
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - SPRING_EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka
     depends_on:
+      - kafka
       - eureka-server
-    networks:
-      - microservices-network
+
+  notification-service:
+    image: notification-service:latest
+    build:
+      context: ./notification-service
+      dockerfile: Dockerfile
     ports:
-      - "8082:8082"
+      - "8083:8083"
+    environment:
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - SPRING_MAIL_HOST=smtp.mail.ru
+      - SPRING_MAIL_PORT=587
+      - SPRING_MAIL_USERNAME=
+      - SPRING_MAIL_PASSWORD=
+      - SPRING_EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka
+    depends_on:
+      - kafka
+      - eureka-server
 
   api-gateway:
-    build: ./apigateway
-    container_name: apigateway
-    environment:
-      - EUREKA_SERVER_URI=http://eureka-server:8761/eureka
-    depends_on:
-      - eureka-server
-    networks:
-      - microservices-network
+    image: api-gateway:latest
+    build:
+      context: ./apigateway
+      dockerfile: Dockerfile
     ports:
       - "8080:8080"
+    environment:
+      - SPRING_EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka
+    depends_on:
+      - eureka-server
+      - user-service
+      - note-service
 
-networks:
-  microservices-network:
-    driver: bridge
+  note-service:
+    image: note-service:latest
+    build:
+      context: ./note-service
+      dockerfile: Dockerfile
+    ports:
+      - "8082:8082"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:h2:mem:notedb
+      - SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.h2.Driver
+      - SPRING_EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka
+    depends_on:
+      - kafka
+      - eureka-server

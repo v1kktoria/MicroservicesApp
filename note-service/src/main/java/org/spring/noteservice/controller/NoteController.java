@@ -1,5 +1,6 @@
 package org.spring.noteservice.controller;
 
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.spring.noteservice.model.Note;
 import org.spring.noteservice.service.NoteService;
@@ -20,12 +21,12 @@ public class NoteController {
     }
 
     @PostMapping
-    public Note createNote(@RequestHeader("Authorization") String token, @RequestBody Note note) {
+    public Note createNote(@RequestHeader("Authorization") String token, @Valid @RequestBody Note note) {
         return noteService.createNote(note, token);
     }
 
     @PutMapping("/{id}")
-    public Note updateNote(@PathVariable Long id, @RequestBody Note note, @RequestHeader("Authorization") String token) {
+    public Note updateNote(@PathVariable Long id, @Valid @RequestBody Note note, @RequestHeader("Authorization") String token) {
         return noteService.updateNote(id, note, token);
     }
 

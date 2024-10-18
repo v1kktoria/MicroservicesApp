@@ -3,7 +3,11 @@ package org.spring.noteservice.service;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import lombok.RequiredArgsConstructor;
+import org.spring.noteservice.annotations.RequiresAuthorization;
 import org.spring.noteservice.client.UserClient;
+import org.spring.noteservice.exception.InvalidTokenException;
+import org.spring.noteservice.exception.ResourceNotFoundException;
+import org.spring.noteservice.exception.UnauthorizedAccessException;
 import org.spring.noteservice.model.Note;
 import org.spring.noteservice.repository.NoteRepository;
 import org.springframework.stereotype.Service;
@@ -14,56 +18,43 @@ import java.util.List;
 @RequiredArgsConstructor
 public class NoteService {
     private final NoteRepository noteRepository;
-    private final UserClient userClient;
 
+    @RequiresAuthorization
     public List<Note> getAllNotes(String token) {
-        if (userClient.validateToken(token)) {
-            Long userId = getUserIdFromToken(token);
-            return noteRepository.findByUserId(userId);
-        } else {
-            throw new SecurityException("Invalid token");
-        }
+        Long userId = getUserIdFromToken(token);
+        return noteRepository.findByUserId(userId);
     }
 
-    public Note createNote(Note note, String token)
-    {
-        if (userClient.validateToken(token)) {
-            Long userId = getUserIdFromToken(token);
-            note.setUserId(userId);
-            return noteRepository.save(note);
-        } else {
-            throw new SecurityException("Invalid token");
-        }
+    @RequiresAuthorization
+    public Note createNote(Note note, String token) {
+        Long userId = getUserIdFromToken(token);
+        note.setUserId(userId);
+        return noteRepository.save(note);
     }
 
-    public Note updateNote(Long id, Note note, String token)
-    {
-        if (userClient.validateToken(token)) {
-            Long userId = getUserIdFromToken(token);
-            Note existingNote = noteRepository.findById(id).orElseThrow();
-            if (!existingNote.getUserId().equals(userId)) {
-                throw new SecurityException("You are not authorized to update this note");
-            }
-            existingNote.setTitle(note.getTitle());
-            existingNote.setContent(note.getContent());
-            return noteRepository.save(existingNote);
-        } else {
-            throw new SecurityException("Invalid token");
+    @RequiresAuthorization
+    public Note updateNote(Long id, Note note, String token) {
+        Long userId = getUserIdFromToken(token);
+        Note existingNote = noteRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Note not found with id: " + id));
+        if (!existingNote.getUserId().equals(userId)) {
+            throw new UnauthorizedAccessException("You are not authorized to update this note");
         }
+        existingNote.setTitle(note.getTitle());
+        existingNote.setContent(note.getContent());
+        return noteRepository.save(existingNote);
     }
 
-    public void deleteNote(Long id, String token)
-    {
-        if (userClient.validateToken(token)) {
-            Long userId = getUserIdFromToken(token);
-            Note note = noteRepository.findById(id).orElseThrow();
-            if (!note.getUserId().equals(userId)) {
-                throw new SecurityException("You are not authorized to delete this note");
-            }
-            noteRepository.delete(note);
-        } else {
-            throw new SecurityException("Invalid token");
+    @RequiresAuthorization
+    public void deleteNote(Long id, String token) {
+        Long userId = getUserIdFromToken(token);
+        Note note = noteRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Note not found with id: " + id));
+
+        if (!note.getUserId().equals(userId)) {
+            throw new UnauthorizedAccessException("You are not authorized to delete this note");
         }
+        noteRepository.delete(note);
     }
 
     private Long getUserIdFromToken(String token) {
@@ -77,8 +68,7 @@ public class NoteService {
             }
             return decodedJWT.getClaim("userId").asLong();
         } catch (Exception e) {
-            System.err.println("Token decoding error: " + e.getMessage());
-            return null;
+            throw new InvalidTokenException("Failed to decode token");
         }
     }
 }

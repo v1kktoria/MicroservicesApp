@@ -1,11 +1,12 @@
 package org.spring.userservice.service;
 
-
 import lombok.RequiredArgsConstructor;
+import org.apache.http.auth.InvalidCredentialsException;
+import org.spring.userservice.PasswordChangeProducer;
+import org.spring.userservice.exception.ResourceAlreadyExistsException;
+import org.spring.userservice.exception.ResourceNotFoundException;
 import org.spring.userservice.model.User;
 import org.spring.userservice.repository.UserRepository;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -18,35 +19,51 @@ public class UserService {
     private final UserRepository userRepository;
     private final JwtTokenProvider jwtTokenProvider;
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
+    private final PasswordChangeProducer passwordChangeProducer;
 
-    public ResponseEntity<String> registerUser(User user) {
+    public User registerUser(User user) {
         if (userRepository.findByUsername(user.getUsername()).isPresent()) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body("User already exists");
+            throw new ResourceAlreadyExistsException("User already exists");
         }
         user.setPassword(passwordEncoder.encode(user.getPassword()));
-        userRepository.save(user);
-        return ResponseEntity.status(HttpStatus.CREATED).body("User registered successfully");
+        return userRepository.save(user);
     }
 
-    public ResponseEntity<String> login(User user) {
+    public String login(User user) throws InvalidCredentialsException {
         Optional<User> optionalUser = userRepository.findByUsername(user.getUsername());
         if (optionalUser.isPresent()) {
             User foundUser = optionalUser.get();
             if (passwordEncoder.matches(user.getPassword(), foundUser.getPassword())) {
-                String token = jwtTokenProvider.generateToken(user.getUsername(), foundUser.getId());
-                return ResponseEntity.ok(token);
+                return jwtTokenProvider.generateToken(user.getUsername(), foundUser.getId());
+            } else {
+                throw new InvalidCredentialsException("Invalid credentials");
             }
+        } else {
+            throw new InvalidCredentialsException("User not found");
         }
-        return ResponseEntity.status(401).body("Invalid credentials");
     }
 
-    public ResponseEntity<Boolean> validate(String header) {
-        String token = header.startsWith("Bearer ") ? header.substring(7) : header;
+    public Boolean validate(String token) {
         try {
-            boolean isValid = jwtTokenProvider.validateToken(token) != null;
-            return ResponseEntity.ok(isValid);
+            return jwtTokenProvider.validateToken(token) != null;
         } catch (Exception e) {
-            return ResponseEntity.status(400).body(false);
+            throw new RuntimeException("Invalid validate token", e);
+        }
+    }
+
+    public void changePassword(Long userId, String oldPassword, String newPassword) throws InvalidCredentialsException {
+        Optional<User> optionalUser = userRepository.findById(userId);
+        if (optionalUser.isPresent()) {
+            User user = optionalUser.get();
+            if (passwordEncoder.matches(oldPassword, user.getPassword())) {
+                user.setPassword(passwordEncoder.encode(newPassword));
+                userRepository.save(user);
+                passwordChangeProducer.sendPasswordChangeNotification(user.getEmail());
+            } else {
+                throw new InvalidCredentialsException("Old password is incorrect");
+            }
+        } else {
+            throw new ResourceNotFoundException("User not found");
         }
     }
 }
